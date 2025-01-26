@@ -4,11 +4,10 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({ canvas });
 
-// サイズ調整
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// 簡単なジオメトリ（回転する立方体）
+// 立方体の作成
 const geometry = new THREE.BoxGeometry();
 const material = new THREE.MeshStandardMaterial({ color: 0x44aa88 });
 const cube = new THREE.Mesh(geometry, material);
@@ -22,18 +21,57 @@ scene.add(light);
 // カメラの位置設定
 camera.position.z = 5;
 
+// Raycasterとマウスベクトル
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+let isDragging = false;
+
 // アニメーションループ
 function animate() {
   requestAnimationFrame(animate);
-
-  // 回転アニメーション
-  cube.rotation.x += 0.01;
-  cube.rotation.y += 0.01;
-
   renderer.render(scene, camera);
 }
+animate();
 
-// ウィンドウリサイズ対応
+// マウスイベントリスナー
+canvas.addEventListener('mousedown', (event) => {
+  isDragging = true;
+
+  // マウスの位置を計算
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+  // Raycasterでマウス位置を取得
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObject(cube);
+
+  if (intersects.length > 0) {
+    cube.material.color.set(0xff5555); // クリック時に色を変更
+  }
+});
+
+canvas.addEventListener('mousemove', (event) => {
+  if (isDragging) {
+    // マウス位置に基づいて立方体を動かす
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObject(cube);
+
+    if (intersects.length > 0) {
+      cube.position.x = intersects[0].point.x;
+      cube.position.y = intersects[0].point.y;
+    }
+  }
+});
+
+canvas.addEventListener('mouseup', () => {
+  isDragging = false;
+  cube.material.color.set(0x44aa88); // 色を元に戻す
+});
+
+// ウィンドウサイズ変更対応
 window.addEventListener('resize', () => {
   const width = window.innerWidth;
   const height = window.innerHeight;
@@ -42,5 +80,3 @@ window.addEventListener('resize', () => {
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
 });
-
-animate();
