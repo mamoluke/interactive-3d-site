@@ -1,9 +1,12 @@
-// 基本設定
+// Ammo.js の初期化
+Ammo().then(() => {
+  // 物理エンジンとThree.jsの設定を行う
+  init();
+  animate();
+});
+
 let scene, camera, renderer, physicsWorld, rigidBodies;
 let margin = 0.05;
-
-init();
-animate();
 
 function init() {
   // シーンとカメラの作成
@@ -14,6 +17,7 @@ function init() {
   // レンダラーの作成
   renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('webglCanvas') });
   renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setClearColor(0x000000); // 背景色を黒に設定
   document.body.appendChild(renderer.domElement);
 
   // 照明
@@ -91,4 +95,42 @@ function createSphere(radius, position) {
 
   const mass = 1;
   const localInertia = new Ammo.btVector3(0, 0, 0);
-  colShape.calcul
+  colShape.calculateLocalInertia(mass, localInertia);
+
+  const rbInfo = new Ammo.btRigidBodyConstructionInfo(mass, motionState, colShape, localInertia);
+  const body = new Ammo.btRigidBody(rbInfo);
+
+  physicsWorld.addRigidBody(body);
+  rigidBodies.push({ mesh: sphere, body });
+}
+
+function onWindowResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  // 物理シミュレーションの更新
+  const deltaTime = 1 / 60;
+  physicsWorld.stepSimulation(deltaTime, 10);
+
+  // オブジェクトの位置を更新
+  for (let i = 0; i < rigidBodies.length; i++) {
+    const objThree = rigidBodies[i].mesh;
+    const objAmmo = rigidBodies[i].body;
+    const motionState = objAmmo.getMotionState();
+    if (motionState) {
+      const transform = new Ammo.btTransform();
+      motionState.getWorldTransform(transform);
+      const origin = transform.getOrigin();
+      const rotation = transform.getRotation();
+      objThree.position.set(origin.x(), origin.y(), origin.z());
+      objThree.quaternion.set(rotation.x(), rotation.y(), rotation.z(), rotation.w());
+    }
+  }
+
+  renderer.render(scene, camera);
+}
