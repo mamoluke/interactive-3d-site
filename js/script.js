@@ -1,156 +1,145 @@
-// グローバル変数
-let scene, camera, renderer, physicsWorld, rigidBodies = [];
+let physicsWorld;
+let scene, camera, renderer;
+let rigidBodies = [];
 
-// Ammo.jsの初期化とメイン処理の開始
-Ammo().then(function(Ammo) {
-    init();
+// ページ読み込み時に実行
+Ammo().then(start);
+
+function start() {
+    setupGraphics();
+    setupPhysics();
+    createObjects();
     animate();
-});
+}
 
-function init() {
-    // シーン作成
+function setupGraphics() {
     scene = new THREE.Scene();
-    
-    // カメラ設定
-    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 20, 40);
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.2, 5000);
+    camera.position.set(0, 30, 70);
     camera.lookAt(new THREE.Vector3(0, 0, 0));
 
-    // レンダラー設定
-    renderer = new THREE.WebGLRenderer();
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setClearColor(0x000000);
     renderer.shadowMap.enabled = true;
     document.body.appendChild(renderer.domElement);
 
-    // ライト設定
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
-    scene.add(ambientLight);
-
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    dirLight.position.set(5, 15, 5);
-    dirLight.castShadow = true;
-    scene.add(dirLight);
-
-    setupPhysicsWorld();
-    createGround();
-    createBalls();
-
-    window.addEventListener('resize', onWindowResize, false);
+    const light = new THREE.DirectionalLight(0xffffff, 1);
+    light.position.set(-10, 30, 20);
+    light.castShadow = true;
+    scene.add(light);
+    scene.add(new THREE.AmbientLight(0x707070));
 }
 
-function setupPhysicsWorld() {
-    // 物理演算ワールドの設定
-    const collisionConfiguration = new Ammo.btDefaultCollisionConfiguration();
-    const dispatcher = new Ammo.btCollisionDispatcher(collisionConfiguration);
-    const overlappingPairCache = new Ammo.btDbvtBroadphase();
-    const solver = new Ammo.btSequentialImpulseConstraintSolver();
-    
-    physicsWorld = new Ammo.btDiscreteDynamicsWorld(
-        dispatcher, 
-        overlappingPairCache, 
-        solver, 
-        collisionConfiguration
+function setupPhysics() {
+    let collisionConfiguration = new Ammo.btDefaultCollisionConfiguration();
+    let dispatcher = new Ammo.btCollisionDispatcher(collisionConfiguration);
+    let broadphase = new Ammo.btDbvtBroadphase();
+    let solver = new Ammo.btSequentialImpulseConstraintSolver();
+    physicsWorld = new Ammo.btDiscreteDynamicsWorld(dispatcher, broadphase, solver, collisionConfiguration);
+    physicsWorld.setGravity(new Ammo.btVector3(0, -50, 0));
+}
+
+function createObjects() {
+    // 床を作成
+    let pos = { x: 0, y: 0, z: 0 };
+    let scale = { x: 50, y: 2, z: 50 };
+    let quat = { x: 0, y: 0, z: 0, w: 1 };
+    let mass = 0;
+
+    let blockPlane = new THREE.Mesh(
+        new THREE.BoxGeometry(),
+        new THREE.MeshPhongMaterial({ color: 0xa0afa4 })
     );
-    physicsWorld.setGravity(new Ammo.btVector3(0, -9.81, 0));
-}
+    blockPlane.position.set(pos.x, pos.y, pos.z);
+    blockPlane.scale.set(scale.x, scale.y, scale.z);
+    blockPlane.castShadow = true;
+    blockPlane.receiveShadow = true;
+    scene.add(blockPlane);
 
-function createGround() {
-    // 地面のジオメトリ作成
-    const groundGeometry = new THREE.BoxGeometry(30, 2, 30);
-    const groundMaterial = new THREE.MeshPhongMaterial({ 
-        color: 0x999999,
-        specular: 0x111111,
-        shininess: 100
-    });
-    const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
-    groundMesh.receiveShadow = true;
-    groundMesh.position.set(0, -1, 0);
-    scene.add(groundMesh);
+    let transform = new Ammo.btTransform();
+    transform.setIdentity();
+    transform.setOrigin(new Ammo.btVector3(pos.x, pos.y, pos.z));
+    transform.setRotation(new Ammo.btQuaternion(quat.x, quat.y, quat.z, quat.w));
+    let motionState = new Ammo.btDefaultMotionState(transform);
 
-    // 地面の物理ボディ作成
-    const groundShape = new Ammo.btBoxShape(new Ammo.btVector3(15, 1, 15));
-    const groundTransform = new Ammo.btTransform();
-    groundTransform.setIdentity();
-    groundTransform.setOrigin(new Ammo.btVector3(0, -1, 0));
-    
-    const mass = 0; // 質量0で固定
-    const localInertia = new Ammo.btVector3(0, 0, 0);
-    const motionState = new Ammo.btDefaultMotionState(groundTransform);
-    const rbInfo = new Ammo.btRigidBodyConstructionInfo(mass, motionState, groundShape, localInertia);
-    const groundBody = new Ammo.btRigidBody(rbInfo);
-    
-    physicsWorld.addRigidBody(groundBody);
-}
+    let colShape = new Ammo.btBoxShape(new Ammo.btVector3(scale.x * 0.5, scale.y * 0.5, scale.z * 0.5));
+    colShape.setMargin(0.05);
 
-function createBalls() {
-    // 10個のボールを生成
-    for (let i = 0; i < 10; i++) {
-        const radius = Math.random() * 0.5 + 0.5;
-        const ballGeometry = new THREE.SphereGeometry(radius, 32, 32);
-        const ballMaterial = new THREE.MeshPhongMaterial({
-            color: Math.random() * 0xffffff,
-            specular: 0x333333,
-            shininess: 15
-        });
-        
-        const ballMesh = new THREE.Mesh(ballGeometry, ballMaterial);
-        ballMesh.castShadow = true;
-        ballMesh.receiveShadow = true;
-        
-        // ランダムな位置に配置
-        const x = Math.random() * 10 - 5;
-        const y = Math.random() * 10 + 10;
-        const z = Math.random() * 10 - 5;
-        ballMesh.position.set(x, y, z);
-        
-        scene.add(ballMesh);
+    let localInertia = new Ammo.btVector3(0, 0, 0);
+    colShape.calculateLocalInertia(mass, localInertia);
 
-        // 物理ボディの作成
-        const ballShape = new Ammo.btSphereShape(radius);
-        const ballTransform = new Ammo.btTransform();
-        ballTransform.setIdentity();
-        ballTransform.setOrigin(new Ammo.btVector3(x, y, z));
-        
-        const mass = 1;
-        const localInertia = new Ammo.btVector3(0, 0, 0);
-        ballShape.calculateLocalInertia(mass, localInertia);
-        
-        const motionState = new Ammo.btDefaultMotionState(ballTransform);
-        const rbInfo = new Ammo.btRigidBodyConstructionInfo(mass, motionState, ballShape, localInertia);
-        const ballBody = new Ammo.btRigidBody(rbInfo);
-        
-        physicsWorld.addRigidBody(ballBody);
-        rigidBodies.push({ mesh: ballMesh, body: ballBody });
+    let rbInfo = new Ammo.btRigidBodyConstructionInfo(mass, motionState, colShape, localInertia);
+    let body = new Ammo.btRigidBody(rbInfo);
+    physicsWorld.addRigidBody(body);
+
+    // 球を作成
+    for (let i = 0; i < 20; i++) {
+        let ball = createBall();
+        ball.position.set(
+            Math.random() * 20 - 10,
+            20 + Math.random() * 20,
+            Math.random() * 20 - 10
+        );
     }
+}
+
+function createBall() {
+    let pos = { x: 0, y: 0, z: 0 };
+    let radius = 2;
+    let quat = { x: 0, y: 0, z: 0, w: 1 };
+    let mass = 1;
+
+    let ball = new THREE.Mesh(
+        new THREE.SphereGeometry(radius),
+        new THREE.MeshPhongMaterial({ color: Math.random() * 0xffffff })
+    );
+    ball.position.set(pos.x, pos.y, pos.z);
+    ball.castShadow = true;
+    ball.receiveShadow = true;
+    scene.add(ball);
+
+    let transform = new Ammo.btTransform();
+    transform.setIdentity();
+    transform.setOrigin(new Ammo.btVector3(pos.x, pos.y, pos.z));
+    transform.setRotation(new Ammo.btQuaternion(quat.x, quat.y, quat.z, quat.w));
+    let motionState = new Ammo.btDefaultMotionState(transform);
+
+    let colShape = new Ammo.btSphereShape(radius);
+    colShape.setMargin(0.05);
+
+    let localInertia = new Ammo.btVector3(0, 0, 0);
+    colShape.calculateLocalInertia(mass, localInertia);
+
+    let rbInfo = new Ammo.btRigidBodyConstructionInfo(mass, motionState, colShape, localInertia);
+    let body = new Ammo.btRigidBody(rbInfo);
+
+    physicsWorld.addRigidBody(body);
+    rigidBodies.push({ mesh: ball, body: body });
+    return ball;
 }
 
 function animate() {
     requestAnimationFrame(animate);
-    
-    // 物理演算の更新
-    physicsWorld.stepSimulation(1 / 60, 10);
-    
-    // 物理オブジェクトの位置を更新
+    let deltaTime = 1.0 / 60.0;
+    updatePhysics(deltaTime);
+    renderer.render(scene, camera);
+}
+
+function updatePhysics(deltaTime) {
+    physicsWorld.stepSimulation(deltaTime, 10);
     for (let i = 0; i < rigidBodies.length; i++) {
-        const objThree = rigidBodies[i].mesh;
-        const objAmmo = rigidBodies[i].body;
-        const ms = objAmmo.getMotionState();
+        let objThree = rigidBodies[i].mesh;
+        let objAmmo = rigidBodies[i].body;
+        let ms = objAmmo.getMotionState();
         if (ms) {
-            const transform = new Ammo.btTransform();
-            ms.getWorldTransform(transform);
-            const p = transform.getOrigin();
-            const q = transform.getRotation();
+            ms.getWorldTransform(tmpTrans);
+            let p = tmpTrans.getOrigin();
+            let q = tmpTrans.getRotation();
             objThree.position.set(p.x(), p.y(), p.z());
             objThree.quaternion.set(q.x(), q.y(), q.z(), q.w());
         }
     }
-    
-    renderer.render(scene, camera);
 }
 
-function onWindowResize() {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-}
+let tmpTrans = new Ammo.btTransform();
