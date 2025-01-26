@@ -15,9 +15,15 @@ function init() {
   camera.position.set(0, 5, 10);
 
   // レンダラーの作成
-  renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('webglCanvas') });
+  const canvas = document.getElementById('webglCanvas');
+  if (!canvas) {
+    console.error("Canvas element not found!");
+    return;
+  }
+
+  renderer = new THREE.WebGLRenderer({ canvas: canvas });
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setClearColor(0x000000); // 背景色を黒に設定
+  renderer.setClearColor(0xffffff); // 背景色を白に設定
   document.body.appendChild(renderer.domElement);
 
   // 照明
