@@ -1,82 +1,94 @@
 // 基本設定
-const canvas = document.getElementById('webglCanvas');
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer({ canvas });
+let scene, camera, renderer, physicsWorld, rigidBodies;
+let margin = 0.05;
 
-renderer.setSize(window.innerWidth, window.innerHeight);
-document.body.appendChild(renderer.domElement);
-
-// 立方体の作成
-const geometry = new THREE.BoxGeometry();
-const material = new THREE.MeshStandardMaterial({ color: 0x44aa88 });
-const cube = new THREE.Mesh(geometry, material);
-scene.add(cube);
-
-// ライト設定
-const light = new THREE.DirectionalLight(0xffffff, 1);
-light.position.set(5, 5, 5);
-scene.add(light);
-
-// カメラの位置設定
-camera.position.z = 5;
-
-// Raycasterとマウスベクトル
-const raycaster = new THREE.Raycaster();
-const mouse = new THREE.Vector2();
-let isDragging = false;
-
-// アニメーションループ
-function animate() {
-  requestAnimationFrame(animate);
-  renderer.render(scene, camera);
-}
+init();
 animate();
 
-// マウスイベントリスナー
-canvas.addEventListener('mousedown', (event) => {
-  isDragging = true;
+function init() {
+  // シーンとカメラの作成
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.set(0, 5, 10);
 
-  // マウスの位置を計算
-  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  // レンダラーの作成
+  renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('webglCanvas') });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
 
-  // Raycasterでマウス位置を取得
-  raycaster.setFromCamera(mouse, camera);
-  const intersects = raycaster.intersectObject(cube);
+  // 照明
+  const light = new THREE.DirectionalLight(0xffffff, 1);
+  light.position.set(10, 10, 10);
+  scene.add(light);
 
-  if (intersects.length > 0) {
-    cube.material.color.set(0xff5555); // クリック時に色を変更
+  // 物理エンジンの初期化
+  const collisionConfiguration = new Ammo.btDefaultCollisionConfiguration();
+  const dispatcher = new Ammo.btCollisionDispatcher(collisionConfiguration);
+  const overlappingPairCache = new Ammo.btDbvtBroadphase();
+  const solver = new Ammo.btSequentialImpulseConstraintSolver();
+
+  physicsWorld = new Ammo.btDiscreteDynamicsWorld(dispatcher, overlappingPairCache, solver, collisionConfiguration);
+  physicsWorld.setGravity(new Ammo.btVector3(0, -9.8, 0));
+
+  rigidBodies = [];
+
+  // 平面の作成
+  createFloor();
+
+  // 球体をランダムに生成
+  for (let i = 0; i < 10; i++) {
+    createSphere(Math.random() * 0.5 + 0.2, { x: Math.random() * 4 - 2, y: 5, z: Math.random() * 4 - 2 });
   }
-});
 
-canvas.addEventListener('mousemove', (event) => {
-  if (isDragging) {
-    // マウス位置に基づいて立方体を動かす
-    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  // ウィンドウリサイズ対応
+  window.addEventListener('resize', onWindowResize);
+}
 
-    raycaster.setFromCamera(mouse, camera);
-    const intersects = raycaster.intersectObject(cube);
+function createFloor() {
+  const pos = { x: 0, y: -1, z: 0 };
+  const scale = { x: 10, y: 1, z: 10 };
 
-    if (intersects.length > 0) {
-      cube.position.x = intersects[0].point.x;
-      cube.position.y = intersects[0].point.y;
-    }
-  }
-});
+  const floor = new THREE.Mesh(
+    new THREE.BoxGeometry(scale.x, scale.y, scale.z),
+    new THREE.MeshStandardMaterial({ color: 0x808080 })
+  );
+  floor.position.set(pos.x, pos.y, pos.z);
+  scene.add(floor);
 
-canvas.addEventListener('mouseup', () => {
-  isDragging = false;
-  cube.material.color.set(0x44aa88); // 色を元に戻す
-});
+  // Ammo.js 物理ボディ
+  const transform = new Ammo.btTransform();
+  transform.setIdentity();
+  transform.setOrigin(new Ammo.btVector3(pos.x, pos.y, pos.z));
+  const motionState = new Ammo.btDefaultMotionState(transform);
 
-// ウィンドウサイズ変更対応
-window.addEventListener('resize', () => {
-  const width = window.innerWidth;
-  const height = window.innerHeight;
+  const colShape = new Ammo.btBoxShape(new Ammo.btVector3(scale.x * 0.5, scale.y * 0.5, scale.z * 0.5));
+  colShape.setMargin(margin);
 
-  renderer.setSize(width, height);
-  camera.aspect = width / height;
-  camera.updateProjectionMatrix();
-});
+  const mass = 0; // 静的オブジェクト
+  const localInertia = new Ammo.btVector3(0, 0, 0);
+  const rbInfo = new Ammo.btRigidBodyConstructionInfo(mass, motionState, colShape, localInertia);
+  const body = new Ammo.btRigidBody(rbInfo);
+
+  physicsWorld.addRigidBody(body);
+}
+
+function createSphere(radius, position) {
+  const sphere = new THREE.Mesh(
+    new THREE.SphereGeometry(radius, 32, 32),
+    new THREE.MeshStandardMaterial({ color: Math.random() * 0xffffff })
+  );
+  sphere.position.set(position.x, position.y, position.z);
+  scene.add(sphere);
+
+  // Ammo.js 物理ボディ
+  const transform = new Ammo.btTransform();
+  transform.setIdentity();
+  transform.setOrigin(new Ammo.btVector3(position.x, position.y, position.z));
+  const motionState = new Ammo.btDefaultMotionState(transform);
+
+  const colShape = new Ammo.btSphereShape(radius);
+  colShape.setMargin(margin);
+
+  const mass = 1;
+  const localInertia = new Ammo.btVector3(0, 0, 0);
+  colShape.calcul
